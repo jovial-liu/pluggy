@@ -2,6 +2,8 @@
 ``PluginManager`` unit and public API testing.
 """
 
+from dataclasses import dataclass
+from dataclasses import field
 import importlib.metadata
 import types
 from typing import Any
@@ -27,6 +29,93 @@ def test_plugin_double_register(pm: PluginManager) -> None:
         pm.register(42, name="abc")
     with pytest.raises(ValueError):
         pm.register(42, name="def")
+
+
+@pytest.mark.parametrize("unregister_by", ["plugin", "name", "both"])
+@pytest.mark.parametrize("hashable", [False, True])
+def test_equal_plugins_are_distinct(
+    he_pm: PluginManager, unregister_by: str, hashable: bool
+) -> None:
+    @dataclass
+    class Plugin:
+        value: int = field(compare=False)
+
+        @hookimpl
+        def he_method1(self, arg: int) -> int:
+            return self.value + arg
+
+    @dataclass(unsafe_hash=True)
+    class HashablePlugin(Plugin):
+        pass
+
+    plugin_type = HashablePlugin if hashable else Plugin
+    first, second, unregistered = plugin_type(1), plugin_type(2), plugin_type(3)
+    assert first == second == unregistered
+    he_pm.register(first, "first")
+    assert he_pm.get_name(unregistered) is None
+    assert not he_pm.is_registered(unregistered)
+    assert he_pm.get_hookcallers(unregistered) is None
+    with pytest.raises(AssertionError, match="not registered"):
+        he_pm.unregister(unregistered)
+
+    he_pm.register(second, "second")
+    assert he_pm.get_name(first) == "first"
+    assert he_pm.get_name(second) == "second"
+    assert he_pm.is_registered(first)
+    assert he_pm.is_registered(second)
+    assert sorted(he_pm.hook.he_method1(arg=4)) == [5, 6]
+    assert (
+        he_pm.subset_hook_caller("he_method1", [unregistered]) is he_pm.hook.he_method1
+    )
+    subset = he_pm.subset_hook_caller("he_method1", [first])
+    assert subset(arg=4) == [6]
+    assert he_pm.subset_hook_caller("he_method1", [second])(arg=4) == [5]
+    assert he_pm.subset_hook_caller("he_method1", [first, second, first])(arg=4) == []
+    with pytest.raises(ValueError, match="different name"):
+        he_pm.register(first, "duplicate")
+
+    if unregister_by == "plugin":
+        assert he_pm.unregister(first) is first
+    elif unregister_by == "name":
+        assert he_pm.unregister(name="first") is first
+    else:
+        assert he_pm.unregister(first, "first") is first
+    assert he_pm.get_name(first) is None
+    assert not he_pm.is_registered(first)
+    assert he_pm.get_plugin("second") is second
+    assert he_pm.hook.he_method1(arg=4) == [6]
+    assert subset(arg=4) == [6]
+    assert he_pm.hook.he_method1.get_hookimpls()[0].plugin is second
+
+
+def test_plugin_registry_does_not_compare_plugins(he_pm: PluginManager) -> None:
+    class Plugin:
+        def __eq__(self, other: object) -> bool:
+            raise AssertionError("plugin equality was used")
+
+        def __ne__(self, other: object) -> bool:
+            raise AssertionError("plugin inequality was used")
+
+        def __hash__(self) -> int:
+            raise AssertionError("plugin hashing was used")
+
+        @hookimpl
+        def he_method1(self, arg: object) -> object:
+            return arg
+
+    first, second = Plugin(), Plugin()
+    he_pm.set_blocked("blocked")
+    he_pm.register(first, "first")
+    he_pm.register(second, "second")
+    assert he_pm.is_registered(first)
+    assert he_pm.get_name(second) == "second"
+    assert he_pm.subset_hook_caller("he_method1", [first])(arg=4) == [4]
+    with pytest.raises(ValueError, match="different name"):
+        he_pm.register(first, "duplicate")
+    assert he_pm.unregister(first) is first
+    assert not he_pm.is_registered(first)
+    assert he_pm.hook.he_method1(arg=4) == [4]
+    assert he_pm.unregister(second) is second
 
 
 def test_register_rejects_none(pm: PluginManager) -> None:

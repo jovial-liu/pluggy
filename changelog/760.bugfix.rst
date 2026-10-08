@@ -1,0 +1,5 @@
+Compare plugins by identity when registering, looking up, unregistering, and
+selecting subsets of hook implementations. Distinct plugins that compare equal
+can now be registered and used independently, without invoking their equality
+or hashing methods for these operations. ``get_plugins()`` still returns a set
+and retains Python's usual set equality and hashability requirements.
