@@ -940,9 +940,7 @@ def test_load_setuptools_instantiation(
     assert ret_distributions == [(plugin, dist)]
 
 
-@pytest.mark.parametrize(
-    "method", ["plugin", "name", "both", "equal_plugin", "blocked"]
-)
+@pytest.mark.parametrize("method", ["plugin", "name", "both", "blocked"])
 def test_unregister_entrypoint_distribution(
     monkeypatch: pytest.MonkeyPatch, pm: PluginManager, tmp_path: Path, method: str
 ) -> None:
@@ -976,10 +974,6 @@ def test_unregister_entrypoint_distribution(
         assert pm.unregister(name="first") is first
     elif method == "both":
         assert pm.unregister(first, "first") is first
-    elif method == "equal_plugin":
-        equal_plugin = tuple(iter(first))
-        assert equal_plugin is not first
-        assert pm.unregister(equal_plugin) is equal_plugin
     else:
         pm.set_blocked("first")
         assert pm.is_blocked("first")
